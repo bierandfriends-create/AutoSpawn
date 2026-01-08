@@ -3,22 +3,22 @@ package de.autospawn;
 import org.bukkit.*;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public class AutoSpawn extends JavaPlugin implements Listener {
+import java.util.List;
 
-    private static final int RADIUS = 12; // 25x25
-    private static final int MIN_Y = -64;
-    private static final int MAX_Y = 319;
+public final class AutoSpawn extends JavaPlugin implements Listener {
+
+    private final String BYPASS = "autospawn.bypass";
 
     @Override
     public void onEnable() {
@@ -27,103 +27,100 @@ public class AutoSpawn extends JavaPlugin implements Listener {
         getLogger().info("AutoSpawn aktiviert");
     }
 
-    // ======================
-    // JOIN → TELEPORT
-    // ======================
-    @EventHandler
-    public void onJoin(PlayerJoinEvent e) {
-        Player p = e.getPlayer();
-        World w = p.getWorld();
-
-        if (w.getName().equalsIgnoreCase("farmwelt")) {
-            teleportToWarp(p, "farmwelt");
-        } else if (w.getName().equalsIgnoreCase("Nether")) {
-            teleportToWarp(p, "nether");
-        }
-    }
-
-    private void teleportToWarp(Player p, String warp) {
-        if (!getConfig().contains("warps." + warp)) return;
-
-        World w = Bukkit.getWorld(getConfig().getString("warps." + warp + ".world"));
-        if (w == null) return;
-
-        Location loc = new Location(
-                w,
-                getConfig().getDouble("warps." + warp + ".x"),
-                getConfig().getDouble("warps." + warp + ".y"),
-                getConfig().getDouble("warps." + warp + ".z"),
-                (float) getConfig().getDouble("warps." + warp + ".yaw"),
-                (float) getConfig().getDouble("warps." + warp + ".pitch")
-        );
-
-        p.teleport(loc);
-    }
-
-    // ======================
-    // /SETWARP
-    // ======================
+    // =====================
+    // WARP COMMAND
+    // =====================
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         if (!(sender instanceof Player p)) return true;
-        if (args.length != 1) return false;
+        if (args.length != 1) return true;
 
-        String warp = args[0].toLowerCase();
-        if (!warp.equals("farmwelt") && !warp.equals("nether")) return false;
+        String key = args[0].toLowerCase();
+        if (!getConfig().contains("warps." + key)) return true;
 
         Location l = p.getLocation();
-        getConfig().set("warps." + warp + ".world", l.getWorld().getName());
-        getConfig().set("warps." + warp + ".x", l.getX());
-        getConfig().set("warps." + warp + ".y", l.getY());
-        getConfig().set("warps." + warp + ".z", l.getZ());
-        getConfig().set("warps." + warp + ".yaw", l.getYaw());
-        getConfig().set("warps." + warp + ".pitch", l.getPitch());
-
+        getConfig().set("warps." + key + ".world", l.getWorld().getName());
+        getConfig().set("warps." + key + ".x", l.getX());
+        getConfig().set("warps." + key + ".y", l.getY());
+        getConfig().set("warps." + key + ".z", l.getZ());
+        getConfig().set("warps." + key + ".yaw", l.getYaw());
+        getConfig().set("warps." + key + ".pitch", l.getPitch());
         saveConfig();
-        p.sendMessage("§aWarp §e" + warp + " §agesetzt.");
+
+        p.sendMessage("§aWarp '" + key + "' gesetzt.");
         return true;
     }
 
-    // ======================
-    // SPAWN-SCHUTZ
-    // ======================
+    // =====================
+    // SPAWN CHECK
+    // =====================
     private boolean inSpawn(Location l) {
-        return Math.abs(l.getX()) <= RADIUS &&
-               Math.abs(l.getZ()) <= RADIUS &&
-               l.getY() >= MIN_Y &&
-               l.getY() <= MAX_Y;
+        if (!getConfig().getBoolean("spawn-protection.enabled")) return false;
+
+        List<String> worlds = getConfig().getStringList("spawn-protection.worlds");
+        if (!worlds.contains(l.getWorld().getName())) return false;
+
+        int r = getConfig().getInt("spawn-protection.area.radius-xz");
+        int minY = getConfig().getInt("spawn-protection.area.min-y");
+        int maxY = getConfig().getInt("spawn-protection.area.max-y");
+
+        return Math.abs(l.getX()) <= r &&
+               Math.abs(l.getZ()) <= r &&
+               l.getY() >= minY &&
+               l.getY() <= maxY;
     }
 
+    // =====================
+    // BLOCK EVENTS
+    // =====================
     @EventHandler
     public void onBreak(BlockBreakEvent e) {
-        if (e.getPlayer().hasPermission("autospawn.bypass")) return;
-        if (inSpawn(e.getBlock().getLocation())) e.setCancelled(true);
+        if (e.getPlayer().hasPermission(BYPASS)) return;
+        if (getConfig().getBoolean("spawn-protection.block.break") &&
+            inSpawn(e.getBlock().getLocation())) e.setCancelled(true);
     }
 
     @EventHandler
     public void onPlace(BlockPlaceEvent e) {
-        if (e.getPlayer().hasPermission("autospawn.bypass")) return;
-        if (inSpawn(e.getBlock().getLocation())) e.setCancelled(true);
+        if (e.getPlayer().hasPermission(BYPASS)) return;
+        if (getConfig().getBoolean("spawn-protection.block.place") &&
+            inSpawn(e.getBlock().getLocation())) e.setCancelled(true);
     }
 
+    // =====================
+    // INVENTORY
+    // =====================
     @EventHandler
     public void onInventory(InventoryOpenEvent e) {
         if (!(e.getPlayer() instanceof Player p)) return;
-        if (p.hasPermission("autospawn.bypass")) return;
-        if (inSpawn(p.getLocation())) e.setCancelled(true);
+        if (p.hasPermission(BYPASS)) return;
+        if (getConfig().getBoolean("spawn-protection.inventory.open") &&
+            inSpawn(p.getLocation())) e.setCancelled(true);
     }
 
+    // =====================
+    // DAMAGE
+    // =====================
     @EventHandler
     public void onDamage(EntityDamageEvent e) {
-        if (e.getEntity() instanceof Player p && inSpawn(p.getLocation())) {
-            e.setCancelled(true);
+        if (!(e.getEntity() instanceof Player p)) return;
+        if (!inSpawn(p.getLocation())) return;
+
+        switch (e.getCause()) {
+            case FALL -> { if (getConfig().getBoolean("spawn-protection.damage.fall")) e.setCancelled(true); }
+            case FIRE, FIRE_TICK -> { if (getConfig().getBoolean("spawn-protection.damage.fire")) e.setCancelled(true); }
+            case LAVA -> { if (getConfig().getBoolean("spawn-protection.damage.lava")) e.setCancelled(true); }
+            case ENTITY_EXPLOSION, BLOCK_EXPLOSION -> {
+                if (getConfig().getBoolean("spawn-protection.damage.explosion")) e.setCancelled(true);
+            }
         }
     }
 
     @EventHandler
     public void onPvP(EntityDamageByEntityEvent e) {
-        if (e.getEntity() instanceof Player p && inSpawn(p.getLocation())) {
-            e.setCancelled(true);
-        }
+        Entity v = e.getEntity();
+        if (!(v instanceof Player p)) return;
+        if (!getConfig().getBoolean("spawn-protection.combat.pvp")) return;
+        if (inSpawn(p.getLocation())) e.setCancelled(true);
     }
 }
