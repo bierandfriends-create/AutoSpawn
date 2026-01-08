@@ -1,16 +1,28 @@
 package de.autospawn;
 
+import com.fastasyncworldedit.bukkit.BukkitAdapter;
+import com.fastasyncworldedit.core.FaweAPI;
+import com.fastasyncworldedit.core.session.SessionKey;
+import com.fastasyncworldedit.core.session.SessionManager;
+import com.sk89q.worldedit.EditSession;
+import com.sk89q.worldedit.WorldEdit;
+import com.sk89q.worldedit.bukkit.BukkitWorld;
+import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormats;
+import com.sk89q.worldedit.extent.clipboard.io.ClipboardReader;
+import com.sk89q.worldedit.session.ClipboardHolder;
+import com.sk89q.worldedit.math.BlockVector3;
+
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.*;
+import org.bukkit.event.block.*;
+import org.bukkit.event.entity.*;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.File;
+import java.io.FileInputStream;
 
 public class AutoSpawn extends JavaPlugin implements Listener {
 
@@ -21,94 +33,107 @@ public class AutoSpawn extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
+
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            loadWorld("farmwelt");
+            loadWorld("Nether");
+
+            pasteSchematic("farmwelt", "SpawnFW", 0, 119, 0);
+            pasteSchematic("Nether", "SpawnNE", 0, 59, 0);
+
+        }, 20L * 15); // 15 Sekunden
     }
 
-    /* -----------------------------
-       Spawn-Bereich prüfen
-     ----------------------------- */
-    private boolean isInProtectedSpawn(Location loc) {
+    /* ---------------- WORLD LOAD ---------------- */
+
+    private void loadWorld(String name) {
+        World world = Bukkit.getWorld(name);
+        if (world == null) {
+            Bukkit.createWorld(new WorldCreator(name));
+        }
+    }
+
+    /* ---------------- SCHEMATIC PASTE ---------------- */
+
+    private void pasteSchematic(String worldName, String schematic, int x, int y, int z) {
+        try {
+            File file = new File("plugins/FastAsyncWorldEdit/schematics/" + schematic + ".schem");
+            if (!file.exists()) return;
+
+            ClipboardReader reader = ClipboardFormats.findByFile(file).getReader(new FileInputStream(file));
+            var clipboard = reader.read();
+
+            World world = Bukkit.getWorld(worldName);
+            if (world == null) return;
+
+            EditSession session = WorldEdit.getInstance().newEditSession(new BukkitWorld(world));
+            ClipboardHolder holder = new ClipboardHolder(clipboard);
+
+            holder
+                .createPaste(session)
+                .to(BlockVector3.at(x, y, z))
+                .ignoreAirBlocks(false)
+                .build();
+
+            session.flushSession();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /* ---------------- SPAWN CHECK ---------------- */
+
+    private boolean inSpawn(Location loc) {
         if (loc == null || loc.getWorld() == null) return false;
 
-        String worldName = loc.getWorld().getName();
-        Location center;
+        String w = loc.getWorld().getName();
+        Location c;
 
-        if (worldName.equalsIgnoreCase("farmwelt")) {
-            center = new Location(loc.getWorld(), 0, 119, 0);
-        } else if (worldName.equalsIgnoreCase("resource_nether")) {
-            center = new Location(loc.getWorld(), 0, 59, 0);
-        } else {
-            return false;
-        }
+        if (w.equalsIgnoreCase("farmwelt"))
+            c = new Location(loc.getWorld(), 0, 119, 0);
+        else if (w.equalsIgnoreCase("Nether"))
+            c = new Location(loc.getWorld(), 0, 59, 0);
+        else return false;
 
-        return Math.abs(loc.getBlockX() - center.getBlockX()) <= RADIUS
-                && Math.abs(loc.getBlockZ() - center.getBlockZ()) <= RADIUS
-                && loc.getBlockY() >= MIN_Y
-                && loc.getBlockY() <= MAX_Y;
+        return Math.abs(loc.getBlockX() - c.getBlockX()) <= RADIUS &&
+               Math.abs(loc.getBlockZ() - c.getBlockZ()) <= RADIUS &&
+               loc.getBlockY() >= MIN_Y &&
+               loc.getBlockY() <= MAX_Y;
     }
 
-    private boolean bypass(Player player) {
-        return player.hasPermission("autospawn.bypass");
+    private boolean bypass(Player p) {
+        return p.hasPermission("autospawn.bypass");
     }
 
-    /* -----------------------------
-       Blockieren: Bauen / Abbauen
-     ----------------------------- */
-    @EventHandler
-    public void onBlockPlace(BlockPlaceEvent event) {
-        if (bypass(event.getPlayer())) return;
-        if (isInProtectedSpawn(event.getBlock().getLocation())) {
-            event.setCancelled(true);
-        }
+    /* ---------------- PROTECTION ---------------- */
+
+    @EventHandler public void place(BlockPlaceEvent e) {
+        if (!bypass(e.getPlayer()) && inSpawn(e.getBlock().getLocation())) e.setCancelled(true);
     }
 
-    @EventHandler
-    public void onBlockBreak(BlockBreakEvent event) {
-        if (bypass(event.getPlayer())) return;
-        if (isInProtectedSpawn(event.getBlock().getLocation())) {
-            event.setCancelled(true);
-        }
+    @EventHandler public void breakB(BlockBreakEvent e) {
+        if (!bypass(e.getPlayer()) && inSpawn(e.getBlock().getLocation())) e.setCancelled(true);
     }
 
-    /* -----------------------------
-       Container blockieren
-     ----------------------------- */
-    @EventHandler
-    public void onInventoryOpen(InventoryOpenEvent event) {
-        if (!(event.getPlayer() instanceof Player player)) return;
-        if (bypass(player)) return;
-
-        Block block = event.getInventory().getLocation() != null
-                ? event.getInventory().getLocation().getBlock()
-                : null;
-
-        if (block != null && isInProtectedSpawn(block.getLocation())) {
-            event.setCancelled(true);
-        }
+    @EventHandler public void inv(InventoryOpenEvent e) {
+        if (e.getPlayer() instanceof Player p &&
+            !bypass(p) &&
+            e.getInventory().getLocation() != null &&
+            inSpawn(e.getInventory().getLocation())) e.setCancelled(true);
     }
 
-    /* -----------------------------
-       Schaden blockieren
-     ----------------------------- */
-    @EventHandler
-    public void onDamage(EntityDamageEvent event) {
-        if (!(event.getEntity() instanceof Player player)) return;
-        if (bypass(player)) return;
-
-        if (isInProtectedSpawn(player.getLocation())) {
-            event.setCancelled(true);
-        }
+    @EventHandler public void damage(EntityDamageEvent e) {
+        if (e.getEntity() instanceof Player p &&
+            !bypass(p) &&
+            inSpawn(p.getLocation())) e.setCancelled(true);
     }
 
-    @EventHandler
-    public void onPvP(EntityDamageByEntityEvent event) {
-        if (!(event.getEntity() instanceof Player victim)) return;
-        if (!(event.getDamager() instanceof Player attacker)) return;
-
-        if (bypass(attacker) || bypass(victim)) return;
-
-        if (isInProtectedSpawn(victim.getLocation())
-                || isInProtectedSpawn(attacker.getLocation())) {
-            event.setCancelled(true);
-        }
+    @EventHandler public void pvp(EntityDamageByEntityEvent e) {
+        if (e.getEntity() instanceof Player v &&
+            e.getDamager() instanceof Player a &&
+            !bypass(v) && !bypass(a) &&
+            (inSpawn(v.getLocation()) || inSpawn(a.getLocation())))
+            e.setCancelled(true);
     }
 }
