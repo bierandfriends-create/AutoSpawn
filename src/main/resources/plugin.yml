@@ -1,9 +1,15 @@
 name: AutoSpawn
-version: 1.0
+version: 1.10.3
 main: de.autospawn.AutoSpawn
 api-version: 1.21
 
+commands:
+  setwarp:
+    usage: /setwarp <farmwelt|nether>
+    permission: autospawn.setwarp
+
 permissions:
+  autospawn.setwarp:
+    default: op
   autospawn.bypass:
-    description: Umgeht den Spawn-Schutz
     default: op
