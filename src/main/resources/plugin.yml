@@ -1,6 +1,9 @@
 name: AutoSpawn
 version: 1.0
 main: de.autospawn.AutoSpawn
-api-version: 1.20
-author: bierandfriends
-description: Lädt Spawn-Schematics automatisch beim Serverstart
+api-version: 1.21
+
+permissions:
+  autospawn.bypass:
+    description: Umgeht den Spawn-Schutz
+    default: op
