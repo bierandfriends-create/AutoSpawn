@@ -6,10 +6,9 @@ api-version: 1.21
 commands:
   setwarp:
     usage: /setwarp <farmwelt|nether>
-    permission: autospawn.setwarp
+    description: Setzt den Warp-Punkt
 
 permissions:
-  autospawn.setwarp:
-    default: op
   autospawn.bypass:
+    description: Umgeht den Spawn-Schutz
     default: op
