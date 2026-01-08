@@ -1,0 +1,64 @@
+# =========================
+# AutoSpawn Configuration
+# =========================
+
+settings:
+  teleport-on-join: true
+  teleport-delay-ticks: 0 # 0 = sofort, 20 = 1 Sekunde
+
+permissions:
+  bypass: autospawn.bypass
+
+# =========================
+# WARPS
+# =========================
+warps:
+  farmwelt:
+    enabled: true
+    world: farmwelt
+    x: 0
+    y: 120
+    z: 0
+    yaw: 0
+    pitch: 0
+
+  nether:
+    enabled: true
+    world: Nether
+    x: 0
+    y: 60
+    z: 0
+    yaw: 0
+    pitch: 0
+
+# =========================
+# SPAWN-SCHUTZ
+# =========================
+spawn-protection:
+  enabled: true
+
+  worlds:
+    - farmwelt
+    - Nether
+
+  area:
+    radius-xz: 12      # 12 = 25x25
+    min-y: -64
+    max-y: 319
+
+  block:
+    break: true
+    place: true
+
+  inventory:
+    open: true         # Truhen, Fässer, Hopper, Öfen, etc.
+
+  combat:
+    pvp: true
+    mob-damage: true
+
+  damage:
+    fall: true
+    fire: true
+    lava: true
+    explosion: true
